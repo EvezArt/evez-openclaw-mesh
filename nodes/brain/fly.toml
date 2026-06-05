@@ -1,0 +1,38 @@
+# EVEZ Mesh Brain — Coordinator Node
+# fly app: evez666
+app = 'evez666'
+primary_region = 'ams'
+
+[build]
+  dockerfile = 'Dockerfile.brain'
+
+[env]
+  NODE_ENV = 'production'
+  OPENCLAW_NODE_ID = 'brain'
+  BRAIN_PORT = '8893'
+  BROKER_PORT = '8894'
+  BRAIN_ID = 'evez-brain-master'
+  GROQ_MODEL = 'llama-3.3-70b-versatile'
+  MESH_PEERS = 'openclaws-qol4-a.fly.dev:8893,openclaw-pfncdg.fly.dev:8893'
+
+[processes]
+  brain = 'python3 /app/brain.py'
+  broker = 'python3 /app/broker_full.py'
+
+[http_service]
+  internal_port = 8893
+  force_https = true
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['brain']
+
+[[services]]
+  internal_port = 8894
+  protocol = 'tcp'
+  [[services.ports]]
+    port = 8894
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'
