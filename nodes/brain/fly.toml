@@ -1,38 +1,41 @@
-# EVEZ Mesh Brain — Coordinator Node
-# fly app: evez666
 app = 'evez666'
-primary_region = 'ams'
+primary_region = 'iad'
 
 [build]
   dockerfile = 'Dockerfile.brain'
 
 [env]
+  PORT = '18789'
   NODE_ENV = 'production'
-  OPENCLAW_NODE_ID = 'brain'
-  BRAIN_PORT = '8893'
-  BROKER_PORT = '8894'
-  BRAIN_ID = 'evez-brain-master'
-  GROQ_MODEL = 'llama-3.3-70b-versatile'
-  MESH_PEERS = 'openclaws-qol4-a.fly.dev:8893,openclaw-pfncdg.fly.dev:8893'
-
-[processes]
-  brain = 'python3 /app/brain.py'
-  broker = 'python3 /app/broker_full.py'
-
-[http_service]
-  internal_port = 8893
-  force_https = true
-  auto_stop_machines = 'off'
-  auto_start_machines = true
-  min_machines_running = 1
-  processes = ['brain']
+  OPENCLAW_CONFIG = '/app/.openclaw/openclaw.json'
 
 [[services]]
-  internal_port = 8894
+  internal_port = 18789
   protocol = 'tcp'
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
   [[services.ports]]
-    port = 8894
+    handlers = ['http']
+    port = 80
+
+  [[services.ports]]
+    handlers = ['tls', 'http']
+    port = 443
+
+  [services.concurrency]
+    hard_limit = 25
+    soft_limit = 20
+    type = 'connections'
+
+  [[services.http_checks]]
+    interval = 30000
+    path = '/health'
+    protocol = 'http'
+    timeout = 5000
 
 [[vm]]
-  size = 'shared-cpu-1x'
   memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

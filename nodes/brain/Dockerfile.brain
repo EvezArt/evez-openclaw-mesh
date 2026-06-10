@@ -1,17 +1,20 @@
-FROM python:3.12-slim
+FROM node:20-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir fastapi uvicorn httpx numpy pydantic
+# Copy the mesh (copied to this dir by CI before build)
+COPY mesh/ .
+COPY nodes/brain/ .
 
-COPY mesh/brain.py /app/brain.py
-COPY mesh/broker_full.py /app/broker_full.py
-COPY mesh/server.py /app/server.py
+# Install deps if package.json exists
+RUN if [ -f package.json ]; then npm ci --only=production 2>/dev/null || npm install --only=production; fi
 
-ENV BRAIN_PORT=8893
-ENV BROKER_PORT=8894
-ENV GROQ_MODEL=llama-3.3-70b-versatile
+# Ensure .openclaw config dir exists
+RUN mkdir -p /app/.openclaw
 
-EXPOSE 8893 8894
+EXPOSE 18789
 
-CMD ["uvicorn", "brain:app", "--host", "0.0.0.0", "--port", "8893"]
+HEALTHCHECK --interval=30s --timeout=5s CMD curl -f http://localhost:18789/health || exit 1
+
+# Start gateway - use whichever entrypoint exists
+CMD ["sh", "-c", "node gateway.js 2>/dev/null || node server.js 2>/dev/null || node index.js 2>/dev/null || python3 evez_gateway.py"]
