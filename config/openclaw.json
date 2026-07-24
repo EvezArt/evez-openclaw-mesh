@@ -44,10 +44,10 @@
       "model": "openrouter/auto",
       "fallback_models": [
         "groq/llama-3.3-70b-versatile",
-        "openrouter/mistralai/mistral-7b-instruct:free",
-        "openrouter/meta-llama/llama-3.1-8b-instruct:free",
-        "openrouter/google/gemma-3-27b-it:free",
-        "openrouter/microsoft/phi-3-mini-128k-instruct:free"
+        "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "openrouter/openai/gpt-oss-20b:free",
+        "openrouter/google/gemma-4-31b-it:free",
+        "openrouter/nvidia/nemotron-nano-9b-v2:free"
       ],
       "system_prompt": "You are an EVEZ OpenClaw mesh node. You are part of a decentralized autonomous AI network. You have access to all EVEZ-OS capabilities. Be direct, intelligent, and autonomous. This is node ${OPENCLAW_NODE_ID:-alpha} in the EVEZ mesh."
     }
