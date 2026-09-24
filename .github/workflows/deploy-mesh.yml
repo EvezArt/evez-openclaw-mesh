@@ -142,4 +142,3 @@ jobs:
         run: sleep 60
       - name: Run mesh test suite
         run: python3 mesh_orchestrator.py test
-        continue-on-error: true
