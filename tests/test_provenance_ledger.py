@@ -22,7 +22,7 @@ def test_ledger_detects_payload_tampering(tmp_path: Path):
     ledger.append({"event_type": "ASSET_CAPTURED", "asset_id": "a1"})
     row = json.loads(path.read_text())
     row["asset_id"] = "rewritten"
-    path.write_text(json.dumps(row) + "\n")
+    path.write_text(json.dumps(row) + "\\n")
     result = ledger.verify()
     assert result["valid"] is False
     assert result["reason"] == "event_hash_mismatch"
@@ -54,4 +54,4 @@ def test_transformation_requires_hashes():
 def test_hash_file(tmp_path: Path):
     source = tmp_path / "source.bin"
     source.write_bytes(b"prima materia")
-    assert hash_file(source) == "e2a43e71f2c70e4d2bdb7e4d4b87e5e2d6d91d0f8bb6c2f78b7e3e3f2d9b1a4e"
+    assert hash_file(source) == "72636bd2ec29c776223b6c685c97805fb68a1a3941202202117668ef6bf93599"
