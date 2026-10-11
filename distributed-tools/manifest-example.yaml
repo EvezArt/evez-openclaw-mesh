@@ -1,0 +1,29 @@
+name: docker-build
+version: 1.0.0
+description: Build Docker images through an authorized builder service.
+service:
+  type: grpc
+  endpoint: grpcs://tools-node.evez.mesh:5001
+input_schema:
+  type: object
+  required: [dockerfile, tag]
+  additionalProperties: false
+  properties:
+    dockerfile: {type: string, minLength: 1}
+    tag: {type: string, minLength: 1}
+    build_args:
+      type: object
+      additionalProperties: {type: string}
+output_schema:
+  type: object
+  required: [image_id, size_bytes, build_duration_ms]
+  properties:
+    image_id: {type: string}
+    size_bytes: {type: integer, minimum: 0}
+    build_duration_ms: {type: integer, minimum: 0}
+capabilities: [docker.build]
+rate_limit:
+  requests_per_minute: 10
+auth:
+  required: true
+  roles: [agent, admin]
