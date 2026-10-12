@@ -8,6 +8,8 @@ It uses only the Python standard library and never executes packet content.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
 import json
 import math
@@ -50,28 +52,64 @@ def _is_finite_number(value: Any) -> bool:
 
 
 def review_observation(obs: Any) -> dict[str, Any]:
-    """Assess auditability, not scientific truth."""
+    """Assess traceability and source-byte integrity, not scientific truth."""
     if not isinstance(obs, dict):
         return {"state": "FAIL", "id": None, "issues": ["observation must be a JSON object"]}
     issues: list[str] = []
+    fatal: list[str] = []
     missing = [key for key in REQUIRED_OBSERVATION_FIELDS if key not in obs or obs[key] in (None, "")]
     if missing:
         issues.append("missing required fields: " + ", ".join(missing))
+        fatal.append("missing required fields")
     if "value" in obs and not _is_finite_number(obs["value"]):
         issues.append("value must be a finite numeric value")
+        fatal.append("value must be a finite numeric value")
     if "raw_value" in obs and obs["raw_value"] in (None, ""):
         issues.append("raw_value must preserve the original instrument/source value")
-    if "source_sha256" in obs:
-        digest = obs.get("source_sha256")
-        if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest.lower()):
-            issues.append("source_sha256 must be a 64-character SHA-256 hex digest")
+
+    digest = obs.get("source_sha256")
+    digest_valid = isinstance(digest, str) and len(digest) == 64 and all(c in "0123456789abcdef" for c in digest.lower())
+    if not digest_valid:
+        issues.append("missing or malformed source_sha256: expected a 64-character SHA-256 hex digest")
+    supplied_text = "source_content" in obs
+    supplied_b64 = "source_bytes_base64" in obs
+    source_bytes: bytes | None = None
+    if supplied_text and supplied_b64:
+        issues.append("provide only one of source_content or source_bytes_base64")
+        fatal.append("ambiguous source content")
+    elif supplied_text:
+        if not isinstance(obs["source_content"], str):
+            issues.append("source_content must be a string encoded as UTF-8")
+            fatal.append("invalid source_content")
+        else:
+            source_bytes = obs["source_content"].encode("utf-8")
+    elif supplied_b64:
+        if not isinstance(obs["source_bytes_base64"], str):
+            issues.append("source_bytes_base64 must be a base64 string")
+            fatal.append("invalid source byte encoding")
+        else:
+            try:
+                source_bytes = base64.b64decode(obs["source_bytes_base64"], validate=True)
+            except (binascii.Error, ValueError):
+                issues.append("source_bytes_base64 is not valid base64")
+                fatal.append("invalid source byte encoding")
     else:
-        issues.append("missing source_sha256: raw source bytes are not content-addressed")
+        issues.append("raw source bytes not supplied; source_sha256 cannot be independently verified")
+
+    if source_bytes is not None and digest_valid:
+        actual_digest = sha256_bytes(source_bytes)
+        if actual_digest != digest.lower():
+            issues.append(f"source_sha256 mismatch: declared {digest.lower()}, computed {actual_digest}")
+            fatal.append("source hash mismatch")
+
     recommended_missing = [key for key in RECOMMENDED_OBSERVATION_FIELDS if key not in obs or obs[key] in (None, "")]
     if recommended_missing:
         issues.append("recommended metadata absent: " + ", ".join(recommended_missing))
-    state = "FAIL" if any(x.startswith("missing required") or x.startswith("value must") or x.startswith("observation must") for x in issues) else ("REVIEW_REQUIRED" if issues else "PASS")
-    return {"state": state, "id": obs.get("id"), "issues": issues, "observation_sha256": canonical_hash(obs)}
+    state = "FAIL" if fatal else ("REVIEW_REQUIRED" if issues else "PASS")
+    result = {"state": state, "id": obs.get("id"), "issues": issues, "observation_sha256": canonical_hash(obs)}
+    if source_bytes is not None:
+        result["computed_source_sha256"] = sha256_bytes(source_bytes)
+    return result
 
 
 def review_packet(packet: Any) -> dict[str, Any]:
@@ -91,7 +129,20 @@ def review_packet(packet: Any) -> dict[str, Any]:
     metric_results = packet.get("reported_results", [])
     if not isinstance(metric_results, list):
         raise ValueError("reported_results must be an array")
-    raw_pass = bool(results) and all(r["state"] == "PASS" for r in results) and not duplicates
+    known_ids = {str(x) for x in ids}
+    for index, result in enumerate(metric_results, start=1):
+        label = result.get("name", result.get("id", f"result-{index}")) if isinstance(result, dict) else f"result-{index}"
+        if not isinstance(result, dict):
+            issues.append(f"reported result {label} is not a JSON object")
+            continue
+        refs = result.get("observation_ids", [])
+        if not isinstance(refs, list) or not refs:
+            issues.append(f"reported result {label} has no linked observation IDs")
+            continue
+        missing_refs = [str(ref) for ref in refs if str(ref) not in known_ids]
+        if missing_refs:
+            issues.append(f"reported result {label} references missing observation IDs: " + ", ".join(missing_refs))
+    raw_pass = bool(results) and all(r["state"] == "PASS" for r in results) and not duplicates and not issues
     state = "PASS" if raw_pass and not issues else ("FAIL" if any(r["state"] == "FAIL" for r in results) else "REVIEW_REQUIRED")
     return {
         "schema_version": 1,
