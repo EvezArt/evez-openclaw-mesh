@@ -16,8 +16,10 @@ Exit codes: `0` means schema-level auditability checks pass; `1` means review fl
 ## Packet contract
 
 - `reported_results`: agent claims or derived outputs, with optional linked observation IDs.
-- `raw_observations`: original values plus unit, timestamp, method, instrument, source, and source SHA-256.
+- `raw_observations`: original values plus unit, timestamp, method, instrument, source, source SHA-256, and the actual source bytes in `source_content` (UTF-8 text) or `source_bytes_base64` (arbitrary bytes).
+- Exactly one of `source_content` or `source_bytes_base64` should be supplied for a source to pass the byte-integrity check. The TUI computes SHA-256 over those exact bytes and compares it with `source_sha256`; a valid-looking 64-character digest by itself is not enough.
 - Calibration, uncertainty, replicate ID, and operator/automation are recommended fields and will be flagged when absent.
+- Each reported result must link to existing observation IDs. Missing or dangling links are review flags.
 - Packet and per-observation canonical JSON hashes are emitted for audit references.
 
 Example:
@@ -48,14 +50,15 @@ Example:
 }
 ```
 
-The example hash is a placeholder, not a valid digest. Replace it with the hash of the actual raw source bytes before expecting a clean review.
+The example hash is a placeholder, not a valid digest. Compute it from the exact UTF-8 bytes of `source_content` (or decode `source_bytes_base64` and hash those bytes). The digest must match exactly for the source-byte integrity check to pass.
 
 ## Review semantics
 
 - Missing raw observations never pass merely because a reported result has three decimal places.
 - Missing required metadata or non-finite values fail the schema-level check.
-- Missing recommended metadata, missing source hashes, or malformed source hashes require review.
-- Duplicate observation IDs are flagged.
+- Missing recommended metadata or missing source bytes require review.
+- Malformed hashes, mismatches between declared and computed source hashes, and malformed base64 fail the corresponding observation.
+- Duplicate observation IDs and missing/dangling result-to-observation links are flagged.
 - Content hashes establish identity/integrity of the bytes that were hashed; they do not establish that the source is authentic, calibrated, representative, or true.
 - The tool does not execute packet content, invoke agent tools, approve actions, or infer truth.
 
