@@ -1,0 +1,13 @@
+{
+  "packet_id": "demo-no-raw-observations",
+  "reported_results": [
+    {
+      "name": "r",
+      "value": 0.5,
+      "unit": "ratio",
+      "precision": 3,
+      "observation_ids": []
+    }
+  ],
+  "raw_observations": []
+}
