@@ -122,6 +122,7 @@ class PostAgentAuditTests(unittest.TestCase):
         }
         rendered = module.render(packet, module.review_packet(packet))
         self.assertIn("source_content_utf8_preview", rendered)
+        self.assertIn("computed_source_sha256", rendered)
         self.assertIn("1.234 mm", rendered)
 
 
