@@ -28,4 +28,4 @@ jobs:
       - name: Run post-agent measurement audit tests
         run: python -m unittest discover -s tests -p 'test_post_agent_tui.py' -v
       - name: Exercise missing-raw-observation review path
-        run: python tools/post_agent_tui.py examples/post-agent-measurement-packet.json --json
+        run: python tools/post_agent_tui.py examples/post-agent-measurement-packet.json --json || status=$?; test "${status:-0}" -eq 1
