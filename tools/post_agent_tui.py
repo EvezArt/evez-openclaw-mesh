@@ -125,7 +125,8 @@ def review_packet(packet: Any) -> dict[str, Any]:
         raise ValueError("raw_observations must be an array")
     results = [review_observation(obs) for obs in observations]
     ids = [r.get("id") for r in results if r.get("id") is not None]
-    duplicates = sorted({str(x) for x in ids if ids.count(x) > 1})
+    normalized_ids = [str(x) for x in ids]
+    duplicates = sorted({x for x in normalized_ids if normalized_ids.count(x) > 1})
     issues: list[str] = []
     if not observations:
         issues.append("no raw observations supplied; reported metrics cannot be independently checked")
@@ -199,9 +200,11 @@ def render(packet: dict[str, Any], audit: dict[str, Any]) -> str:
     for obs, result in zip(raw, obs_results):
         lines.append(f"[{result['state']}] observation={_short(result.get('id', 'UNNAMED'))} sha256={result.get('observation_sha256', '')}")
         if isinstance(obs, dict):
-            for key in ("raw_value", "value", "unit", "observed_at", "method", "instrument", "calibration", "uncertainty", "replicate_id", "source", "source_sha256", "computed_source_sha256"):
+            for key in ("raw_value", "value", "unit", "observed_at", "method", "instrument", "calibration", "uncertainty", "replicate_id", "source", "source_sha256"):
                 if key in obs:
                     lines.append(f"  {key}: {_short(obs[key])}")
+            if "computed_source_sha256" in result:
+                lines.append(f"  computed_source_sha256: {result['computed_source_sha256']}")
             if isinstance(obs.get("source_content"), str):
                 source_text = obs["source_content"]
                 # JSON-escape controls (including ANSI terminal escapes) and bound output.
