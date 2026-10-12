@@ -194,9 +194,29 @@ def render(packet: dict[str, Any], audit: dict[str, Any]) -> str:
     for obs, result in zip(raw, obs_results):
         lines.append(f"[{result['state']}] observation={_short(result.get('id', 'UNNAMED'))} sha256={result.get('observation_sha256', '')}")
         if isinstance(obs, dict):
-            for key in ("raw_value", "value", "unit", "observed_at", "method", "instrument", "calibration", "uncertainty", "replicate_id", "source", "source_sha256"):
+            for key in ("raw_value", "value", "unit", "observed_at", "method", "instrument", "calibration", "uncertainty", "replicate_id", "source", "source_sha256", "computed_source_sha256"):
                 if key in obs:
                     lines.append(f"  {key}: {_short(obs[key])}")
+            if isinstance(obs.get("source_content"), str):
+                source_text = obs["source_content"]
+                # JSON-escape controls (including ANSI terminal escapes) and bound output.
+                preview = json.dumps(source_text[:4096], ensure_ascii=True)
+                lines.append(f"  source_content_utf8_preview: {_short(preview, 2048)}")
+                if len(source_text) > 4096:
+                    lines.append(f"  source_content_utf8_preview_truncated: true (total chars={len(source_text)})")
+            elif isinstance(obs.get("source_bytes_base64"), str):
+                try:
+                    source_bytes = base64.b64decode(obs["source_bytes_base64"], validate=True)
+                    try:
+                        source_text = source_bytes.decode("utf-8")
+                        preview = json.dumps(source_text[:4096], ensure_ascii=True)
+                        lines.append(f"  source_bytes_utf8_preview: {_short(preview, 2048)}")
+                        if len(source_text) > 4096:
+                            lines.append(f"  source_bytes_preview_truncated: true (total chars={len(source_text)})")
+                    except UnicodeDecodeError:
+                        lines.append(f"  source_bytes_binary: {len(source_bytes)} bytes; first_64_bytes_hex={source_bytes[:64].hex()}")
+                except (binascii.Error, ValueError):
+                    lines.append("  source_bytes_base64: invalid encoding; cannot display source bytes")
         for issue in result["issues"]:
             lines.append(f"  ! {issue}")
     lines += ["", "REVIEW FLAGS", "-" * 72]
