@@ -68,9 +68,15 @@ def review_observation(obs: Any) -> dict[str, Any]:
         issues.append("raw_value must preserve the original instrument/source value")
 
     digest = obs.get("source_sha256")
-    digest_valid = isinstance(digest, str) and len(digest) == 64 and all(c in "0123456789abcdef" for c in digest.lower())
-    if not digest_valid:
-        issues.append("missing or malformed source_sha256: expected a 64-character SHA-256 hex digest")
+    if digest in (None, ""):
+        digest_valid = False
+        issues.append("missing source_sha256: raw source bytes are not content-addressed")
+    elif isinstance(digest, str) and len(digest) == 64 and all(c in "0123456789abcdef" for c in digest.lower()):
+        digest_valid = True
+    else:
+        digest_valid = False
+        issues.append("malformed source_sha256: expected a 64-character SHA-256 hex digest")
+        fatal.append("malformed source hash")
     supplied_text = "source_content" in obs
     supplied_b64 = "source_bytes_base64" in obs
     source_bytes: bytes | None = None
@@ -96,19 +102,18 @@ def review_observation(obs: Any) -> dict[str, Any]:
     else:
         issues.append("raw source bytes not supplied; source_sha256 cannot be independently verified")
 
-    if source_bytes is not None and digest_valid:
-        actual_digest = sha256_bytes(source_bytes)
-        if actual_digest != digest.lower():
-            issues.append(f"source_sha256 mismatch: declared {digest.lower()}, computed {actual_digest}")
-            fatal.append("source hash mismatch")
+    computed_digest = sha256_bytes(source_bytes) if source_bytes is not None else None
+    if computed_digest is not None and digest_valid and computed_digest != digest.lower():
+        issues.append(f"source_sha256 mismatch: declared {digest.lower()}, computed {computed_digest}")
+        fatal.append("source hash mismatch")
 
     recommended_missing = [key for key in RECOMMENDED_OBSERVATION_FIELDS if key not in obs or obs[key] in (None, "")]
     if recommended_missing:
         issues.append("recommended metadata absent: " + ", ".join(recommended_missing))
     state = "FAIL" if fatal else ("REVIEW_REQUIRED" if issues else "PASS")
     result = {"state": state, "id": obs.get("id"), "issues": issues, "observation_sha256": canonical_hash(obs)}
-    if source_bytes is not None:
-        result["computed_source_sha256"] = sha256_bytes(source_bytes)
+    if computed_digest is not None:
+        result["computed_source_sha256"] = computed_digest
     return result
 
 
@@ -120,7 +125,7 @@ def review_packet(packet: Any) -> dict[str, Any]:
         raise ValueError("raw_observations must be an array")
     results = [review_observation(obs) for obs in observations]
     ids = [r.get("id") for r in results if r.get("id") is not None]
-    duplicates = sorted({x for x in ids if ids.count(x) > 1})
+    duplicates = sorted({str(x) for x in ids if ids.count(x) > 1})
     issues: list[str] = []
     if not observations:
         issues.append("no raw observations supplied; reported metrics cannot be independently checked")
