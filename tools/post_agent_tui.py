@@ -29,8 +29,19 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _hash_safe(value: Any) -> Any:
+    """Normalize invalid JSON numeric values so malformed evidence can still be fingerprinted."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return {"__nonfinite_float__": repr(value)}
+    if isinstance(value, dict):
+        return {str(k): _hash_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_hash_safe(v) for v in value]
+    return value
+
+
 def canonical_hash(value: Any) -> str:
-    data = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    data = json.dumps(_hash_safe(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
     return sha256_bytes(data)
 
 
