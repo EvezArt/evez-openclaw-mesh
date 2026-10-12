@@ -96,7 +96,7 @@ class PostAgentAuditTests(unittest.TestCase):
 
     def test_bad_source_hash_is_flagged(self):
         result = module.review_observation(observation(source_sha256="not-a-hash"))
-        self.assertNotEqual(result["state"], "PASS")
+        self.assertEqual(result["state"], "FAIL")
 
     def test_nonfinite_value_fails(self):
         self.assertEqual(module.review_observation(observation(value=float("nan")))["state"], "FAIL")
@@ -114,6 +114,15 @@ class PostAgentAuditTests(unittest.TestCase):
         rendered = module.render(packet, module.review_packet(packet))
         self.assertIn("display precision, not measurement validity", rendered)
         self.assertIn("NO RAW OBSERVATIONS PROVIDED", rendered)
+
+    def test_render_shows_bounded_raw_source_preview(self):
+        packet = {
+            "reported_results": [{"name": "reading", "value": 1.234, "unit": "mm", "observation_ids": ["obs-1"]}],
+            "raw_observations": [observation()],
+        }
+        rendered = module.render(packet, module.review_packet(packet))
+        self.assertIn("source_content_utf8_preview", rendered)
+        self.assertIn("1.234 mm", rendered)
 
 
 if __name__ == "__main__":
