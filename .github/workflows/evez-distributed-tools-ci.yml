@@ -25,3 +25,7 @@ jobs:
         run: python -m pip install -r distributed-tools/requirements.txt
       - name: Run focused policy tests
         run: python -m pytest -ra -vv --tb=long tests/test_evez_distributed_tools.py
+      - name: Run post-agent measurement audit tests
+        run: python -m unittest discover -s tests -p 'test_post_agent_tui.py' -v
+      - name: Exercise missing-raw-observation review path
+        run: python tools/post_agent_tui.py examples/post-agent-measurement-packet.json --json
