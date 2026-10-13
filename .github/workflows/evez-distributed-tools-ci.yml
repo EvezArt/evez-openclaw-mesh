@@ -27,5 +27,11 @@ jobs:
         run: python -m pytest -ra -vv --tb=long tests/test_evez_distributed_tools.py
       - name: Run post-agent measurement audit tests
         run: python -m unittest discover -s tests -p 'test_post_agent_tui.py' -v
+      - name: Set up Node.js for browser reviewer tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run offline browser reviewer smoke tests
+        run: node --test tests/test_post_agent_review_browser.js
       - name: Exercise missing-raw-observation review path
         run: python tools/post_agent_tui.py examples/post-agent-measurement-packet.json --json || status=$?; test "${status:-0}" -eq 1
