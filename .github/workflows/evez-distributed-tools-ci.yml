@@ -1,0 +1,37 @@
+name: EVEZ Distributed Tools CI
+
+on:
+  push:
+    branches: ["main", "feat/**", "fix/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  registry-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: distributed-tools/requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r distributed-tools/requirements.txt
+      - name: Run focused policy tests
+        run: python -m pytest -ra -vv --tb=long tests/test_evez_distributed_tools.py
+      - name: Run post-agent measurement audit tests
+        run: python -m unittest discover -s tests -p 'test_post_agent_tui.py' -v
+      - name: Set up Node.js for browser reviewer tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run offline browser reviewer smoke tests
+        run: node --test tests/test_post_agent_review_browser.js
+      - name: Exercise missing-raw-observation review path
+        run: python tools/post_agent_tui.py examples/post-agent-measurement-packet.json --json || status=$?; test "${status:-0}" -eq 1
