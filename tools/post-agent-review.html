@@ -7,7 +7,7 @@
 <title>EVEZ Post-Agent Evidence Reviewer</title>
 <style>
 :root{font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color-scheme:dark;--bg:#101318;--panel:#191e26;--line:#343c49;--ink:#edf2f8;--muted:#aeb9c8;--accent:#a8d8ff;--bad:#ffb4ab;--warn:#ffd58a;--good:#a6e3b2}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}main{max-width:980px;margin:auto;padding:20px}h1{font-size:clamp(1.6rem,4vw,2.5rem);line-height:1.1;margin:.2em 0}.muted{color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}textarea{width:100%;min-height:300px;resize:vertical;background:#0b0e12;color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:12px;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}button,.filelabel{border:1px solid var(--line);border-radius:9px;padding:10px 14px;background:#263445;color:var(--ink);font:inherit;cursor:pointer;display:inline-block}button.primary{background:#174f78;border-color:#387da9}button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-weight:700;font-size:.85rem}.PASS{color:var(--good)}.FAIL{color:var(--bad)}.REVIEW_REQUIRED{color:var(--warn)}.card{border:1px solid var(--line);border-radius:10px;padding:12px;margin:10px 0;overflow-wrap:anywhere}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.metric{background:#0d1117;border-radius:9px;padding:12px}.metric strong{font-size:1.6rem;display:block}.issue{color:var(--warn);margin:.3em 0}.source{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b0e12;padding:10px;border-radius:8px;max-height:260px;overflow:auto;font:12px/1.5 ui-monospace,monospace}.hidden{display:none}footer{padding:10px 0 30px;color:var(--muted);font-size:.9rem}a{color:var(--accent)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}main{max-width:980px;margin:auto;padding:20px}h1{font-size:clamp(1.6rem,4vw,2.5rem);line-height:1.1;margin:.2em 0}.muted{color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}textarea{width:100%;min-height:300px;resize:vertical;background:#0b0e12;color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:12px;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}button,.filelabel{border:1px solid var(--line);border-radius:9px;padding:10px 14px;background:#263445;color:var(--ink);font:inherit;cursor:pointer;display:inline-block}button.primary{background:#174f78;border-color:#387da9}button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-weight:700;font-size:.85rem}.PASS{color:var(--good)}.SCHEMA_CHECK_PASSED{color:var(--good)}.FAIL{color:var(--bad)}.REVIEW_REQUIRED{color:var(--warn)}.card{border:1px solid var(--line);border-radius:10px;padding:12px;margin:10px 0;overflow-wrap:anywhere}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.metric{background:#0d1117;border-radius:9px;padding:12px}.metric strong{font-size:1.6rem;display:block}.issue{color:var(--warn);margin:.3em 0}.source{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b0e12;padding:10px;border-radius:8px;max-height:260px;overflow:auto;font:12px/1.5 ui-monospace,monospace}.hidden{display:none}footer{padding:10px 0 30px;color:var(--muted);font-size:.9rem}a{color:var(--accent)}
 </style>
 </head>
 <body><main>
@@ -18,7 +18,7 @@
 </header>
 <section class="panel">
 <h2>1 · Load an agent packet</h2>
-<p class="muted">Paste JSON or load a local JSON file. Processing happens in this browser tab; this page does not upload your packet.</p>
+<p class="muted">Paste JSON or load a local JSON file. Processing happens in this browser tab; nothing is uploaded. Packets are limited to 5 MiB, source payloads to 2 MiB, and previews to 4,096 characters.</p>
 <textarea id="packet" spellcheck="false" aria-label="Agent result JSON"></textarea>
 <div class="actions">
 <button class="primary" id="review">Review evidence</button>
@@ -37,6 +37,7 @@
 </main>
 <script>
 "use strict";
+const MAX_PACKET_BYTES=5*1024*1024,MAX_SOURCE_BYTES=2*1024*1024,SOURCE_PREVIEW_CHARS=4096;
 const $=id=>document.getElementById(id);
 const demo={packet_id:"demo-no-raw-observations",reported_results:[{name:"r",value:0.5,unit:"ratio",precision:3,observation_ids:[]}],raw_observations:[]};
 let lastAudit=null;
@@ -48,8 +49,20 @@ function bytesFor(o){
  const text=Object.prototype.hasOwnProperty.call(o,"source_content");
  const b64=Object.prototype.hasOwnProperty.call(o,"source_bytes_base64");
  if(text&&b64)throw new Error("provide only one of source_content or source_bytes_base64");
- if(text){if(typeof o.source_content!=="string")throw new Error("source_content must be a string");return new TextEncoder().encode(o.source_content);}
- if(b64){if(typeof o.source_bytes_base64!=="string")throw new Error("source_bytes_base64 must be a string");const raw=atob(o.source_bytes_base64);return Uint8Array.from(raw,c=>c.charCodeAt(0));}
+ if(text){
+  if(typeof o.source_content!=="string")throw new Error("source_content must be a string");
+  const raw=new TextEncoder().encode(o.source_content);
+  if(raw.byteLength>MAX_SOURCE_BYTES)throw new Error("source payload exceeds 2 MiB limit");
+  return raw;
+ }
+ if(b64){
+  if(typeof o.source_bytes_base64!=="string")throw new Error("source_bytes_base64 must be a string");
+  if(!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(o.source_bytes_base64))throw new Error("source_bytes_base64 is not canonical base64");
+  const encoded=o.source_bytes_base64,raw=atob(encoded);
+  if(btoa(raw)!==encoded)throw new Error("source_bytes_base64 is not canonical base64");
+  if(raw.length>MAX_SOURCE_BYTES)throw new Error("source payload exceeds 2 MiB limit");
+  return Uint8Array.from(raw,c=>c.charCodeAt(0));
+ }
  return null;
 }
 async function reviewObservation(o){
@@ -70,7 +83,24 @@ async function reviewObservation(o){
  else if(digestOK){computed=await sha256(raw);if(computed!==digest.toLowerCase()){issues.push("Source hash mismatch: computed "+computed);fatal.push("source hash mismatch");}}
  const recMissing=recommended.filter(k=>o[k]===undefined||o[k]===null||o[k]==="");
  if(recMissing.length)issues.push("Recommended metadata missing: "+recMissing.join(", "));
- return{id:o.id??"unknown",state:fatal.length?"FAIL":issues.length?"REVIEW_REQUIRED":"PASS",issues,computed_source_sha256:computed,source_preview:raw===null?null:(typeof o.source_content==="string"?o.source_content:(()=>{try{return new TextDecoder("utf-8",{fatal:true}).decode(raw)}catch{return "[binary data: "+raw.length+" bytes; first 64 bytes hex "+hex(raw.slice(0,64))+"]"}})())};
+ let sourcePreview=null,sourcePreviewTruncated=false;
+ if(raw!==null){
+  if(typeof o.source_content==="string"){
+   sourcePreviewTruncated=o.source_content.length>SOURCE_PREVIEW_CHARS;
+   sourcePreview=o.source_content.slice(0,SOURCE_PREVIEW_CHARS);
+  }else{
+   try{
+    const decoded=new TextDecoder("utf-8",{fatal:true}).decode(raw);
+    sourcePreviewTruncated=decoded.length>SOURCE_PREVIEW_CHARS;
+    sourcePreview=decoded.slice(0,SOURCE_PREVIEW_CHARS);
+   }catch{
+    sourcePreview="[binary data: "+raw.length+" bytes; first 64 bytes hex "+hex(raw.slice(0,64))+"]";
+    sourcePreviewTruncated=raw.length>64;
+   }
+  }
+  if(sourcePreviewTruncated&&!sourcePreview.startsWith("[binary data:"))sourcePreview+="\n… [preview truncated; showing first "+SOURCE_PREVIEW_CHARS+" characters]";
+ }
+ return{id:o.id??"unknown",state:fatal.length?"FAIL":issues.length?"REVIEW_REQUIRED":"PASS",issues,computed_source_sha256:computed,source_bytes_length:raw===null?null:raw.length,source_preview:sourcePreview,source_preview_truncated:sourcePreviewTruncated};
 }
 async function reviewPacket(p){
  if(!p||typeof p!=="object"||Array.isArray(p))throw new Error("Packet root must be a JSON object.");
@@ -90,16 +120,16 @@ async function reviewPacket(p){
  return{schema_version:1,review_type:"post_agent_measurement_audit",packet_id:p.packet_id??"UNNAMED",state,packet_sha256_of_parsed_json:packetHash,reported_result_count:reports.length,raw_observation_count:raw.length,reported_results:reports,observations,issues:flags,important_limit:"Auditability checks do not establish scientific validity or truth."};
 }
 function show(a){
- lastAudit=a;$("results").classList.remove("hidden");$("status").innerHTML='<span class="badge '+esc(a.state)+'">'+esc(a.state)+'</span> <span class="muted">Packet: '+esc(a.packet_id??"")+"</span>";
+ lastAudit=a;$("results").classList.remove("hidden");$("status").innerHTML='<span class="badge '+esc(a.state.replace(/\s+/g,"_"))+'">'+esc(a.state)+'</span> <span class="muted">Packet: '+esc(a.packet_id??"")+"</span>";
  $("reportCount").textContent=a.reported_result_count??0;$("observationCount").textContent=a.raw_observation_count??0;$("flagCount").textContent=(a.issues??[]).length;
  $("reported").innerHTML=(a.reported_results??[]).map(r=>'<article class="card"><strong>'+esc(r.name??r.id??"Unnamed result")+'</strong><p>'+esc(r.value??"MISSING")+' '+esc(r.unit??"")+'</p><p class="muted">Display precision: '+esc(r.precision??"unspecified")+' · Observation links: '+esc(Array.isArray(r.observation_ids)&&r.observation_ids.length?r.observation_ids.join(", "):"NONE")+'</p></article>').join("")||'<p class="muted">No reported results.</p>';
  $("observations").innerHTML=(a.observations??[]).map(o=>'<article class="card"><span class="badge '+esc(o.state)+'">'+esc(o.state)+'</span> <strong>'+esc(o.id)+'</strong><p>Computed source SHA-256: <code>'+esc(o.computed_source_sha256??"NOT VERIFIED")+'</code></p>'+(o.source_preview!==null?'<details><summary>Inspect raw source preview</summary><pre class="source">'+esc(o.source_preview)+'</pre></details>':"")+(o.issues??[]).map(i=>'<p class="issue">• '+esc(i)+'</p>').join("")+'</article>').join("")||'<p class="issue">NO RAW OBSERVATIONS PROVIDED.</p>';
  $("flags").innerHTML=(a.issues??[]).map(i=>'<p class="issue">• '+esc(i)+'</p>').join("")||'<p>No schema-level flags. Independent scientific review is still required.</p>';
 }
-$("review").addEventListener("click",async()=>{ $("error").textContent="";try{show(await reviewPacket(JSON.parse($("packet").value)));}catch(e){$("error").textContent="Review error: "+e.message;$("results").classList.add("hidden");}});
+$("review").addEventListener("click",async()=>{ $("error").textContent="";try{const packetText=$("packet").value;if(packetText.length>MAX_PACKET_BYTES||new TextEncoder().encode(packetText).byteLength>MAX_PACKET_BYTES)throw new Error("Packet exceeds 5 MiB review limit.");show(await reviewPacket(JSON.parse(packetText)));}catch(e){$("error").textContent="Review error: "+e.message;$("results").classList.add("hidden");}});
 $("demo").addEventListener("click",()=>{$("packet").value=JSON.stringify(demo,null,2);$("error").textContent="";});
 $("copy").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("packet").value);$("error").textContent="Packet copied.";}catch{$("error").textContent="Clipboard access denied; select and copy the text manually.";}});
-$("file").addEventListener("change",async e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>20*1024*1024){$("error").textContent="File exceeds 20 MiB limit.";return;}$("packet").value=await f.text();$("error").textContent="Loaded "+f.name+" locally."});
+$("file").addEventListener("change",async e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>MAX_PACKET_BYTES){$("error").textContent="File exceeds 5 MiB limit.";return;}$("packet").value=await f.text();$("error").textContent="Loaded "+f.name+" locally."});
 function download(name,text,type){const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 $("export").addEventListener("click",()=>{if(lastAudit)download("evez-audit.json",JSON.stringify(lastAudit,null,2),"application/json");});
 $("copyAudit").addEventListener("click",async()=>{if(!lastAudit)return;try{await navigator.clipboard.writeText(JSON.stringify(lastAudit,null,2));}catch{download("evez-audit.json",JSON.stringify(lastAudit,null,2),"application/json");}});
