@@ -1,4 +1,12 @@
-# Post-Agent Review TUI
+# Post-Agent Review Tools
+
+## Easiest option: browser reviewer
+
+Open [`tools/post-agent-review.html`](../tools/post-agent-review.html) in a modern browser. Paste JSON or load a local JSON file, then choose **Review evidence**. It runs locally in the browser tab and does not upload the packet. Browser SHA-256 verification uses Web Crypto, so use localhost or HTTPS if opening directly from a file does not expose the API. The HTML reviewer displays bounded raw-source previews and can export the audit JSON. Its packet digest is computed over the browser's parsed JSON serialization; it is not a byte-for-byte hash of the original packet file.
+
+The command-line reviewer remains available below.
+
+## Command-line reviewer
 
 The post-agent review TUI is a read-only review surface for agent-produced result packets. It separates **reported results** from **raw observations** and checks whether observations carry enough provenance and metrology metadata to be independently inspected.
 
