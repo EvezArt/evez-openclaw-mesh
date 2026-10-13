@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>EVEZ Post-Agent Evidence Reviewer</title>
+<style>
+:root{font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color-scheme:dark;--bg:#101318;--panel:#191e26;--line:#343c49;--ink:#edf2f8;--muted:#aeb9c8;--accent:#a8d8ff;--bad:#ffb4ab;--warn:#ffd58a;--good:#a6e3b2}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}main{max-width:980px;margin:auto;padding:20px}h1{font-size:clamp(1.6rem,4vw,2.5rem);line-height:1.1;margin:.2em 0}.muted{color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}textarea{width:100%;min-height:300px;resize:vertical;background:#0b0e12;color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:12px;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}button,.filelabel{border:1px solid var(--line);border-radius:9px;padding:10px 14px;background:#263445;color:var(--ink);font:inherit;cursor:pointer;display:inline-block}button.primary{background:#174f78;border-color:#387da9}button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-weight:700;font-size:.85rem}.PASS{color:var(--good)}.FAIL{color:var(--bad)}.REVIEW_REQUIRED{color:var(--warn)}.card{border:1px solid var(--line);border-radius:10px;padding:12px;margin:10px 0;overflow-wrap:anywhere}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.metric{background:#0d1117;border-radius:9px;padding:12px}.metric strong{font-size:1.6rem;display:block}.issue{color:var(--warn);margin:.3em 0}.source{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b0e12;padding:10px;border-radius:8px;max-height:260px;overflow:auto;font:12px/1.5 ui-monospace,monospace}.hidden{display:none}footer{padding:10px 0 30px;color:var(--muted);font-size:.9rem}a{color:var(--accent)}
+</style>
+</head>
+<body><main>
+<header>
+<p class="muted">EVEZ / LOCAL-FIRST / READ-ONLY REVIEW</p>
+<h1>Post-Agent Evidence Reviewer</h1>
+<p class="muted">A formatted number is a claim. This tool checks source-byte integrity and traceability. It does not declare scientific truth.</p>
+</header>
+<section class="panel">
+<h2>1 · Load an agent packet</h2>
+<p class="muted">Paste JSON or load a local JSON file. Processing happens in this browser tab; this page does not upload your packet.</p>
+<textarea id="packet" spellcheck="false" aria-label="Agent result JSON"></textarea>
+<div class="actions">
+<button class="primary" id="review">Review evidence</button>
+<button id="demo">Load missing-evidence demo</button>
+<button id="copy">Copy packet</button>
+<label class="filelabel" for="file">Open JSON file</label><input class="hidden" type="file" id="file" accept=".json,application/json">
+</div><p id="error" class="issue" role="alert"></p>
+</section>
+<section id="results" class="panel hidden" aria-live="polite">
+<h2>2 · Audit result</h2><p id="status"></p>
+<div class="grid"><div class="metric"><span class="muted">Reported results</span><strong id="reportCount">0</strong></div><div class="metric"><span class="muted">Raw observations</span><strong id="observationCount">0</strong></div><div class="metric"><span class="muted">Audit flags</span><strong id="flagCount">0</strong></div></div>
+<h3>Reported results</h3><div id="reported"></div><h3>Raw observations</h3><div id="observations"></div><h3>Review flags</h3><div id="flags"></div>
+<div class="actions"><button id="export">Download audit JSON</button><button id="copyAudit">Copy audit JSON</button></div>
+</section>
+<footer><strong>Limits:</strong> A matching SHA-256 establishes that supplied bytes match the supplied digest, not that the source is authentic, calibrated, representative, or true. Independent review must inspect methods, calibration, uncertainty, replication, and the calculation linking observations to results.</footer>
+</main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const demo={packet_id:"demo-no-raw-observations",reported_results:[{name:"r",value:0.5,unit:"ratio",precision:3,observation_ids:[]}],raw_observations:[]};
+let lastAudit=null;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const finite=n=>typeof n==="number"&&Number.isFinite(n);
+const hex=b=>Array.from(new Uint8Array(b),x=>x.toString(16).padStart(2,"0")).join("");
+async function sha256(bytes){if(!crypto.subtle)throw new Error("Web Crypto is unavailable. Open this page in a modern browser over localhost or HTTPS.");return hex(await crypto.subtle.digest("SHA-256",bytes));}
+function bytesFor(o){
+ const text=Object.prototype.hasOwnProperty.call(o,"source_content");
+ const b64=Object.prototype.hasOwnProperty.call(o,"source_bytes_base64");
+ if(text&&b64)throw new Error("provide only one of source_content or source_bytes_base64");
+ if(text){if(typeof o.source_content!=="string")throw new Error("source_content must be a string");return new TextEncoder().encode(o.source_content);}
+ if(b64){if(typeof o.source_bytes_base64!=="string")throw new Error("source_bytes_base64 must be a string");const raw=atob(o.source_bytes_base64);return Uint8Array.from(raw,c=>c.charCodeAt(0));}
+ return null;
+}
+async function reviewObservation(o){
+ if(!o||typeof o!=="object"||Array.isArray(o))return{id:"unknown",state:"FAIL",issues:["Observation must be a JSON object."]};
+ const required=["id","value","unit","observed_at","method","instrument","source","raw_value"];
+ const recommended=["calibration","uncertainty","replicate_id","operator_or_automation"];
+ const issues=[],fatal=[];
+ const missing=required.filter(k=>o[k]===undefined||o[k]===null||o[k]==="");
+ if(missing.length){issues.push("Missing required fields: "+missing.join(", "));fatal.push("missing required fields");}
+ if(o.value!==undefined&&!finite(o.value)){issues.push("value must be a finite number");fatal.push("invalid numeric value");}
+ const digest=o.source_sha256;
+ const digestOK=typeof digest==="string"&&/^[a-f0-9]{64}$/i.test(digest);
+ if(digest===undefined||digest==="")issues.push("Missing source_sha256.");
+ else if(!digestOK){issues.push("Malformed source_sha256; expected 64 hexadecimal characters.");fatal.push("malformed source hash");}
+ let raw=null,computed=null;
+ try{raw=bytesFor(o);}catch(e){issues.push(e.message);fatal.push("invalid source bytes");}
+ if(raw===null)issues.push("Raw source bytes not supplied; digest cannot be independently verified.");
+ else if(digestOK){computed=await sha256(raw);if(computed!==digest.toLowerCase()){issues.push("Source hash mismatch: computed "+computed);fatal.push("source hash mismatch");}}
+ const recMissing=recommended.filter(k=>o[k]===undefined||o[k]===null||o[k]==="");
+ if(recMissing.length)issues.push("Recommended metadata missing: "+recMissing.join(", "));
+ return{id:o.id??"unknown",state:fatal.length?"FAIL":issues.length?"REVIEW_REQUIRED":"PASS",issues,computed_source_sha256:computed,source_preview:raw===null?null:(typeof o.source_content==="string"?o.source_content:(()=>{try{return new TextDecoder("utf-8",{fatal:true}).decode(raw)}catch{return "[binary data: "+raw.length+" bytes; first 64 bytes hex "+hex(raw.slice(0,64))+"]"}})())};
+}
+async function reviewPacket(p){
+ if(!p||typeof p!=="object"||Array.isArray(p))throw new Error("Packet root must be a JSON object.");
+ const reports=p.reported_results??[],raw=p.raw_observations??[];
+ if(!Array.isArray(reports)||!Array.isArray(raw))throw new Error("reported_results and raw_observations must be arrays.");
+ if(reports.length>10000||raw.length>10000)throw new Error("Packet exceeds 10,000 result or observation records.");
+ const observations=[];for(const o of raw)observations.push(await reviewObservation(o));
+ const ids=observations.filter(o=>o.id!=="unknown").map(o=>String(o.id)),known=new Set(ids),dupes=[...new Set(ids.filter((id,i)=>ids.indexOf(id)!==i))];
+ const flags=[];
+ if(!raw.length&&reports.length)flags.push("Reported results exist but no raw observations were supplied.");
+ if(dupes.length)flags.push("Duplicate observation IDs: "+dupes.join(", "));
+ for(let i=0;i<reports.length;i++){const r=reports[i],label=r&&typeof r==="object"?(r.name??r.id??"result-"+(i+1)):"result-"+(i+1);if(!r||typeof r!=="object"||Array.isArray(r)){flags.push(label+" is not an object.");continue;}const refs=r.observation_ids;if(!Array.isArray(refs)||!refs.length)flags.push(label+" has no linked observation IDs.");else{const missing=refs.filter(id=>!known.has(String(id)));if(missing.length)flags.push(label+" references missing observation IDs: "+missing.join(", "));}}
+ observations.forEach(o=>o.issues.forEach(issue=>flags.push("Observation "+o.id+": "+issue)));
+ const state=observations.some(o=>o.state==="FAIL")?"FAIL":(flags.length||observations.some(o=>o.state!=="PASS"))?"REVIEW_REQUIRED":"SCHEMA CHECK PASSED";
+ const packetText=JSON.stringify(p);
+ const packetHash=await sha256(new TextEncoder().encode(packetText));
+ return{schema_version:1,review_type:"post_agent_measurement_audit",packet_id:p.packet_id??"UNNAMED",state,packet_sha256_of_parsed_json:packetHash,reported_result_count:reports.length,raw_observation_count:raw.length,reported_results:reports,observations,issues:flags,important_limit:"Auditability checks do not establish scientific validity or truth."};
+}
+function show(a){
+ lastAudit=a;$("results").classList.remove("hidden");$("status").innerHTML='<span class="badge '+esc(a.state)+'">'+esc(a.state)+'</span> <span class="muted">Packet: '+esc(a.packet_id??"")+"</span>";
+ $("reportCount").textContent=a.reported_result_count??0;$("observationCount").textContent=a.raw_observation_count??0;$("flagCount").textContent=(a.issues??[]).length;
+ $("reported").innerHTML=(a.reported_results??[]).map(r=>'<article class="card"><strong>'+esc(r.name??r.id??"Unnamed result")+'</strong><p>'+esc(r.value??"MISSING")+' '+esc(r.unit??"")+'</p><p class="muted">Display precision: '+esc(r.precision??"unspecified")+' · Observation links: '+esc(Array.isArray(r.observation_ids)&&r.observation_ids.length?r.observation_ids.join(", "):"NONE")+'</p></article>').join("")||'<p class="muted">No reported results.</p>';
+ $("observations").innerHTML=(a.observations??[]).map(o=>'<article class="card"><span class="badge '+esc(o.state)+'">'+esc(o.state)+'</span> <strong>'+esc(o.id)+'</strong><p>Computed source SHA-256: <code>'+esc(o.computed_source_sha256??"NOT VERIFIED")+'</code></p>'+(o.source_preview!==null?'<details><summary>Inspect raw source preview</summary><pre class="source">'+esc(o.source_preview)+'</pre></details>':"")+(o.issues??[]).map(i=>'<p class="issue">• '+esc(i)+'</p>').join("")+'</article>').join("")||'<p class="issue">NO RAW OBSERVATIONS PROVIDED.</p>';
+ $("flags").innerHTML=(a.issues??[]).map(i=>'<p class="issue">• '+esc(i)+'</p>').join("")||'<p>No schema-level flags. Independent scientific review is still required.</p>';
+}
+$("review").addEventListener("click",async()=>{ $("error").textContent="";try{show(await reviewPacket(JSON.parse($("packet").value)));}catch(e){$("error").textContent="Review error: "+e.message;$("results").classList.add("hidden");}});
+$("demo").addEventListener("click",()=>{$("packet").value=JSON.stringify(demo,null,2);$("error").textContent="";});
+$("copy").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("packet").value);$("error").textContent="Packet copied.";}catch{$("error").textContent="Clipboard access denied; select and copy the text manually.";}});
+$("file").addEventListener("change",async e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>20*1024*1024){$("error").textContent="File exceeds 20 MiB limit.";return;}$("packet").value=await f.text();$("error").textContent="Loaded "+f.name+" locally."});
+function download(name,text,type){const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+$("export").addEventListener("click",()=>{if(lastAudit)download("evez-audit.json",JSON.stringify(lastAudit,null,2),"application/json");});
+$("copyAudit").addEventListener("click",async()=>{if(!lastAudit)return;try{await navigator.clipboard.writeText(JSON.stringify(lastAudit,null,2));}catch{download("evez-audit.json",JSON.stringify(lastAudit,null,2),"application/json");}});
+$("packet").value=JSON.stringify(demo,null,2);
+</script></body></html>
