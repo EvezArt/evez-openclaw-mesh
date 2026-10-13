@@ -2,7 +2,9 @@
 
 ## Easiest option: browser reviewer
 
-Open [`tools/post-agent-review.html`](../tools/post-agent-review.html) in a modern browser. Paste JSON or load a local JSON file, then choose **Review evidence**. It runs locally in the browser tab and does not upload the packet. Browser SHA-256 verification uses Web Crypto, so use localhost or HTTPS if opening directly from a file does not expose the API. The HTML reviewer displays bounded raw-source previews and can export the audit JSON. Its packet digest is computed over the browser's parsed JSON serialization; it is not a byte-for-byte hash of the original packet file.
+Open [`tools/post-agent-review.html`](../tools/post-agent-review.html) in a modern browser. Paste JSON or load a local JSON file, then choose **Review evidence**. It runs locally in the browser tab and does not upload the packet. Browser SHA-256 verification uses Web Crypto, so use localhost or HTTPS if opening directly from a file does not expose the API. Packets are limited to 5 MiB, each source payload to 2 MiB, and displayed source previews to 4,096 characters (or 64 bytes for non-UTF-8 binary sources). Oversized or non-canonical base64 payloads are rejected. The HTML reviewer can export the audit JSON. Its packet digest is computed over the browser's parsed JSON serialization; it is not a byte-for-byte hash of the original packet file.
+
+Run the offline JavaScript/DOM-harness smoke suite with `node --test tests/test_post_agent_review_browser.js`. This checks source-hash match/mismatch, base64, missing evidence, dangling/duplicate IDs, escaping, and size caps. It is not a substitute for a full real-browser integration test.
 
 The command-line reviewer remains available below.
 
